@@ -5,6 +5,7 @@ import plugin from '../src/index';
 
 const baseDir = p.resolve(`${__dirname}/../test/fixtures`);
 
+
 const fixtures = [
     'defineMessages',
     'descriptionsAsObjects',
