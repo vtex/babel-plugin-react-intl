@@ -1,6 +1,6 @@
 {
   "name": "@vtex/babel-plugin-react-intl",
-  "version": "3.0.2-beta",
+  "version": "3.0.3-beta",
   "description": "Extracts string messages for translation from modules that use React Intl.",
   "repository": {
     "type": "git",
