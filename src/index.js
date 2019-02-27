@@ -24,37 +24,44 @@ const EXTRACTED = Symbol('ReactIntlExtracted');
 const MESSAGES  = Symbol('ReactIntlMessages');
 
 export default function ({types: t}) {
+    function warnOrThrow(opts, path, message) {
+        if (opts && opts.errorsAsWarnings) {
+            path.log.warn(message)
+        } else {
+            throw path.buildCodeFrameError(message)
+        }
+    }
+
     function getModuleSourceName(opts) {
         return opts.moduleSourceName || 'react-intl';
     }
 
-    function evaluatePath(path) {
+    function evaluatePath(path, opts) {
         const evaluated = path.evaluate();
         if (evaluated.confident) {
             return evaluated.value;
         }
 
-        console.log('[React Intl] Messages must be statically evaluate-able for extraction.')
-        // throw path.buildCodeFrameError(
-        //     '[React Intl] Messages must be statically evaluate-able for extraction.'
-        // );
+        warnOrThrow(opts, path, `
+            '[React Intl] Messages must be statically evaluate-able for extraction.'
+        `)
     }
 
-    function getMessageDescriptorKey(path) {
+    function getMessageDescriptorKey(path, opts) {
         if (path.isIdentifier() || path.isJSXIdentifier()) {
             return path.node.name;
         }
 
-        return evaluatePath(path);
+        return evaluatePath(path, opts);
     }
 
-    function getMessageDescriptorValue(path) {
+    function getMessageDescriptorValue(path, opts) {
         if (path.isJSXExpressionContainer()) {
             path = path.get('expression');
         }
 
         // Always trim the Message Descriptor values.
-        const descriptorValue = evaluatePath(path);
+        const descriptorValue = evaluatePath(path, opts);
 
         if (typeof descriptorValue === 'string') {
             return descriptorValue.trim();
@@ -63,8 +70,8 @@ export default function ({types: t}) {
         return descriptorValue;
     }
 
-    function getICUMessageValue(messagePath, {isJSXSource = false} = {}) {
-        const message = getMessageDescriptorValue(messagePath);
+    function getICUMessageValue(messagePath, {isJSXSource = false} = {}, opts) {
+        const message = getMessageDescriptorValue(messagePath, opts);
 
         try {
             return printICUMessage(message);
@@ -73,7 +80,7 @@ export default function ({types: t}) {
                 messagePath.isLiteral() &&
                 message.indexOf('\\\\') >= 0) {
 
-                throw messagePath.buildCodeFrameError(
+                warnOrThrow(opts, messagePath, 
                     '[React Intl] Message failed to parse. ' +
                     'It looks like `\\`s were used for escaping, ' +
                     'this won\'t work with JSX string literals. ' +
@@ -82,7 +89,7 @@ export default function ({types: t}) {
                 );
             }
 
-            throw messagePath.buildCodeFrameError(
+            warnOrThrow(opts, messagePath,
                 '[React Intl] Message failed to parse. ' +
                 'See: http://formatjs.io/guides/message-syntax/' +
                 `\n${parseError}`
@@ -90,9 +97,9 @@ export default function ({types: t}) {
         }
     }
 
-    function createMessageDescriptor(propPaths) {
+    function createMessageDescriptor(propPaths, opts) {
         return propPaths.reduce((hash, [keyPath, valuePath]) => {
-            const key = getMessageDescriptorKey(keyPath);
+            const key = getMessageDescriptorKey(keyPath, opts);
 
             if (DESCRIPTOR_PROPS.has(key)) {
                 hash[key] = valuePath;
@@ -102,14 +109,14 @@ export default function ({types: t}) {
         }, {});
     }
 
-    function evaluateMessageDescriptor({...descriptor}, {isJSXSource = false} = {}) {
+    function evaluateMessageDescriptor({...descriptor}, {isJSXSource = false} = {}, opts) {
         Object.keys(descriptor).forEach((key) => {
             const valuePath = descriptor[key];
 
             if (key === 'defaultMessage') {
-                descriptor[key] = getICUMessageValue(valuePath, {isJSXSource});
+                descriptor[key] = getICUMessageValue(valuePath, {isJSXSource}, opts);
             } else {
-                descriptor[key] = getMessageDescriptorValue(valuePath);
+                descriptor[key] = getMessageDescriptorValue(valuePath, opts);
             }
         });
 
@@ -120,15 +127,15 @@ export default function ({types: t}) {
         const {file, opts} = state;
 
         if (!id) {
-            throw path.buildCodeFrameError(
+            warnOrThrow(opts, path, 
                 '[React Intl] Message Descriptors require an `id`.'
-            );
+            )
         }
 
         if (!defaultMessage && !opts.optionalDefaultMessages) {
-            throw path.buildCodeFrameError(
+            warnOrThrow(opts, path, 
                 '[React Intl] Message Descriptors require `defaultMessage`.'
-            );
+            )
         }
 
         const messages = file.get(MESSAGES);
@@ -138,10 +145,10 @@ export default function ({types: t}) {
             if (description !== existing.description ||
                 defaultMessage !== existing.defaultMessage) {
 
-                throw path.buildCodeFrameError(
+                warnOrThrow(opts, path, 
                     `[React Intl] Duplicate message id: "${id}", ` +
                     'but the `description` and/or `defaultMessage` are different.'
-                );
+                )
             }
         }
 
@@ -150,9 +157,9 @@ export default function ({types: t}) {
                 !description ||
                 (typeof description === 'object' && Object.keys(description).length < 1)
             ) {
-                throw path.buildCodeFrameError(
+                warnOrThrow(opts, path, 
                     '[React Intl] Message must have a `description`.'
-                );
+                )
             }
         }
 
@@ -248,7 +255,8 @@ export default function ({types: t}) {
                         attributes.map((attr) => [
                             attr.get('name'),
                             attr.get('value'),
-                        ])
+                        ]),
+                        opts
                     );
 
                     // In order for a default message to be extracted when
@@ -263,14 +271,14 @@ export default function ({types: t}) {
                         // context, then store it.
                         descriptor = evaluateMessageDescriptor(descriptor, {
                             isJSXSource: true,
-                        });
+                        }, opts);
 
                         storeMessage(descriptor, path, state);
 
                         // Remove description since it's not used at runtime.
                         attributes.some((attr) => {
                             const ketPath = attr.get('name');
-                            if (getMessageDescriptorKey(ketPath) === 'description') {
+                            if (getMessageDescriptorKey(ketPath, opts) === 'description') {
                                 attr.remove();
                                 return true;
                             }
@@ -283,17 +291,18 @@ export default function ({types: t}) {
             },
 
             CallExpression(path, state) {
+                const {opts} = state;
                 const moduleSourceName = getModuleSourceName(state.opts);
                 const callee = path.get('callee');
 
                 function assertObjectExpression(node) {
                     if (!(node && node.isObjectExpression())) {
-                        throw path.buildCodeFrameError(
+                        warnOrThrow(opts, path, 
                             `[React Intl] \`${callee.node.name}()\` must be ` +
                             'called with an object expression with values ' +
                             'that are React Intl Message Descriptors, also ' +
                             'defined as object expressions.'
-                        );
+                        )
                     }
                 }
 
@@ -310,11 +319,14 @@ export default function ({types: t}) {
                         properties.map((prop) => [
                             prop.get('key'),
                             prop.get('value'),
-                        ])
+                        ]),
+                        opts
                     );
 
                     // Evaluate the Message Descriptor values, then store it.
-                    descriptor = evaluateMessageDescriptor(descriptor);
+                    descriptor = evaluateMessageDescriptor(descriptor, {
+                        isJSXSource: false,
+                    }, opts);
                     storeMessage(descriptor, messageObj, state);
 
                     // Remove description since it's not used at runtime.
