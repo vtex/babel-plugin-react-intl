@@ -34,9 +34,10 @@ export default function ({types: t}) {
             return evaluated.value;
         }
 
-        throw path.buildCodeFrameError(
-            '[React Intl] Messages must be statically evaluate-able for extraction.'
-        );
+        console.log('[React Intl] Messages must be statically evaluate-able for extraction.')
+        // throw path.buildCodeFrameError(
+        //     '[React Intl] Messages must be statically evaluate-able for extraction.'
+        // );
     }
 
     function getMessageDescriptorKey(path) {
