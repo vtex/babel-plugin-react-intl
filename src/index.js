@@ -26,7 +26,11 @@ const MESSAGES  = Symbol('ReactIntlMessages');
 export default function ({types: t}) {
     function warnOrThrow(opts, path, message) {
         if (opts && opts.errorsAsWarnings) {
-            path.log.warn(message)
+            if (path.log && path.log.warn) {
+                path.log.warn(message)
+            } else {
+                console.warn(message)
+            }
         } else {
             throw path.buildCodeFrameError(message)
         }
