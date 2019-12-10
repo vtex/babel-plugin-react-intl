@@ -326,7 +326,7 @@ export default function ({types: t}) {
                         ]),
                         opts
                     );
-
+ 
                     // Evaluate the Message Descriptor values, then store it.
                     descriptor = evaluateMessageDescriptor(descriptor, {
                         isJSXSource: false,
@@ -341,7 +341,9 @@ export default function ({types: t}) {
                         ),
                         t.objectProperty(
                             t.stringLiteral('defaultMessage'),
-                            t.stringLiteral(descriptor.defaultMessage)
+                            descriptor.defaultMessage 
+                                ? t.stringLiteral(descriptor.defaultMessage)
+                                : t.stringLiteral('')
                         ),
                     ]));
 
